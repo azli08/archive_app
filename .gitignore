@@ -25,8 +25,8 @@ htmlcov/
 
 # Frontend dependencies and build output
 node_modules/
-fr/dist/
-fr/.vite/
+frontend/dist/
+frontend/.vite/
 
 # Editors and operating systems
 .vscode/
