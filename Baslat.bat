@@ -94,7 +94,7 @@ if not errorlevel 1 (
     echo UYARI: 8000 portu kullanimda ancak Collectly API yanit vermiyor. Backend ikinci kez baslatilmadi.
     goto :CHECK_FRONTEND
 )
-start "Collectly Backend" cmd /k "cd /d ""%BACKEND%"" && ""%VENV_PY%"" -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
+start "Collectly Backend" /D "%BACKEND%" cmd.exe /k ".venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000"
 
 :CHECK_FRONTEND
 echo Frontend kontrol ediliyor...
@@ -108,7 +108,7 @@ if not errorlevel 1 (
     echo UYARI: 5173 portu kullanimda ancak Vite yanit vermiyor. Frontend ikinci kez baslatilmadi.
     goto :SUCCESS
 )
-start "Collectly Frontend" cmd /k "cd /d ""%FRONTEND%"" && call npm run dev -- --host 127.0.0.1 --strictPort"
+start "Collectly Frontend" /D "%FRONTEND%" cmd.exe /k "npm run dev -- --host 127.0.0.1 --strictPort"
 
 :SUCCESS
 echo.
