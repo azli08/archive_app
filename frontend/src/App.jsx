@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { apiRequest } from './api.js'
 import {
   ArrowDownWideNarrow,
   ArrowRight,
@@ -202,16 +203,54 @@ function domainOf(url) {
   }
 }
 
+function userFromApi(profile) {
+  return {
+    id: profile.id,
+    email: profile.email,
+    name: profile.display_name || profile.email.split('@')[0],
+    emailVerified: profile.email_verified,
+  }
+}
+
+function bookmarkFromApi(bookmark) {
+  return {
+    id: bookmark.id,
+    title: bookmark.title,
+    url: bookmark.url,
+    description: bookmark.description || '',
+    category: bookmark.category || 'Uncategorized',
+    tags: bookmark.tag_names || [],
+    type: bookmark.content_type || 'Website',
+    date: bookmark.created_at?.slice(0, 10) || '',
+    favorite: bookmark.is_favorite,
+    note: bookmark.personal_note || '',
+    collectionIds: bookmark.collection_ids || [],
+  }
+}
+
+function libraryFromApi(bookmarkPage, categories, collections) {
+  return {
+    bookmarks: bookmarkPage.items.map(bookmarkFromApi),
+    categories,
+    collections: collections.map((collection) => ({
+      ...collection,
+      bookmarkIds: collection.bookmark_ids,
+    })),
+  }
+}
+
 function App() {
   const navigate = useNavigate()
   const location = useLocation()
-  const [user, setUser] = useStoredState('user', null)
+  const [user, setUser] = useState(null)
+  const [token, setToken] = useState(() => localStorage.getItem('collectly-token'))
+  const [authLoading, setAuthLoading] = useState(true)
   const [theme, setTheme] = useStoredState('theme', 'light')
   const [transitionTarget, setTransitionTarget] = useState(null)
   const transitionLock = useRef(false)
-  const [bookmarks, setBookmarks] = useStoredState('bookmarks', initialBookmarks)
-  const [collections, setCollections] = useStoredState('collections', initialCollections)
-  const [categories, setCategories] = useStoredState('categories', starterCategories)
+  const [bookmarks, setBookmarks] = useState([])
+  const [collections, setCollections] = useState([])
+  const [categories, setCategories] = useState([])
   const [active, setActive] = useState(() => routeState(window.location.pathname).active)
   const [activeCollection, setActiveCollection] = useState(
     () => routeState(window.location.pathname).value,
@@ -220,6 +259,57 @@ function App() {
   const [modal, setModal] = useState(null)
   const [toast, setToast] = useState('')
   const [mobileNav, setMobileNav] = useState(false)
+
+  const loadLibrary = async (sessionToken) => {
+    const [bookmarkPage, categoryRows, collectionRows] = await Promise.all([
+      apiRequest('/bookmarks?page=1&page_size=100', { token: sessionToken }),
+      apiRequest('/categories', { token: sessionToken }),
+      apiRequest('/collections', { token: sessionToken }),
+    ])
+    return libraryFromApi(bookmarkPage, categoryRows, collectionRows)
+  }
+
+  const applyLibrary = (library) => {
+    setBookmarks(library.bookmarks)
+    setCategories(library.categories)
+    setCollections(library.collections)
+  }
+
+  useEffect(() => {
+    let activeRequest = true
+    if (!token) {
+      setAuthLoading(false)
+      return () => {
+        activeRequest = false
+      }
+    }
+
+    const restoreSession = async () => {
+      try {
+        const profile = await apiRequest('/users/me', { token })
+        const library = await loadLibrary(token)
+        if (!activeRequest) return
+        setUser(userFromApi(profile))
+        applyLibrary(library)
+      } catch {
+        localStorage.removeItem('collectly-token')
+        if (activeRequest) {
+          setToken(null)
+          setUser(null)
+          setBookmarks([])
+          setCategories([])
+          setCollections([])
+        }
+      } finally {
+        if (activeRequest) setAuthLoading(false)
+      }
+    }
+
+    restoreSession()
+    return () => {
+      activeRequest = false
+    }
+  }, [])
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -281,58 +371,138 @@ function App() {
             : `/${name}`
     navigate(path)
   }
-  const addBookmark = (item) => {
-    const id = item.id || crypto.randomUUID()
-    const { collectionIds = [], ...bookmark } = item
-    const saved = {
-      ...bookmark,
-      id,
-      date: item.id ? item.date : new Date().toISOString().slice(0, 10),
+  const refreshLibrary = async () => applyLibrary(await loadLibrary(token))
+
+  const authenticate = async ({ mode, name, email, password, passwordConfirmation }) => {
+    if (mode === 'register') {
+      await apiRequest('/auth/register', {
+        method: 'POST',
+        body: {
+          email,
+          password,
+          password_confirmation: passwordConfirmation,
+          display_name: name,
+        },
+      })
     }
-    setBookmarks((current) =>
-      item.id
-        ? current.map((entry) => (entry.id === item.id ? saved : entry))
-        : [saved, ...current],
-    )
-    setCollections((current) =>
-      current.map((collection) => ({
-        ...collection,
-        bookmarkIds: collectionIds.includes(collection.id)
-          ? [...new Set([...collection.bookmarkIds, id])]
-          : collection.bookmarkIds.filter((bookmarkId) => bookmarkId !== id),
-      })),
-    )
-    setModal(null)
-    notify(item.id ? 'Bookmark updated' : 'Bookmark saved to your library')
-  }
-  const removeBookmark = (id) => {
-    setBookmarks((current) => current.filter((item) => item.id !== id))
-    setCollections((current) =>
-      current.map((collection) => ({
-        ...collection,
-        bookmarkIds: collection.bookmarkIds.filter((bookmarkId) => bookmarkId !== id),
-      })),
-    )
-    setModal(null)
-    notify('Bookmark deleted')
-  }
-  const toggleFavorite = (id) =>
-    setBookmarks((current) =>
-      current.map((item) => (item.id === id ? { ...item, favorite: !item.favorite } : item)),
-    )
-  const addCollection = (collection) => {
-    setCollections((current) => [
-      ...current,
-      { ...collection, id: crypto.randomUUID(), bookmarkIds: [] },
+    const tokenResponse = await apiRequest('/auth/login', {
+      method: 'POST',
+      body: { email, password },
+    })
+    localStorage.setItem('collectly-token', tokenResponse.access_token)
+    setToken(tokenResponse.access_token)
+    const [profile, library] = await Promise.all([
+      apiRequest('/users/me', { token: tokenResponse.access_token }),
+      loadLibrary(tokenResponse.access_token),
     ])
-    setModal(null)
-    notify('Collection created')
+    setUser(userFromApi(profile))
+    applyLibrary(library)
+    setAuthLoading(false)
+    go('dashboard')
   }
-  const addCategory = (category) => {
-    setCategories((current) => [...current, category])
-    setModal(null)
-    notify('Category created')
+
+  const logout = () => {
+    localStorage.removeItem('collectly-token')
+    localStorage.removeItem('collectly-user')
+    setToken(null)
+    setUser(null)
+    setBookmarks([])
+    setCategories([])
+    setCollections([])
+    go('dashboard')
   }
+
+  const addBookmark = async (item) => {
+    const category = categories.find((entry) => entry.name === item.category)
+    const payload = {
+      url: item.url,
+      title: item.title,
+      description: item.description || '',
+      category_id: category?.id || null,
+      tag_names: item.tags || [],
+      content_type: item.type || 'Website',
+      personal_note: item.note || '',
+      is_favorite: Boolean(item.favorite),
+      collection_ids: item.collectionIds || [],
+    }
+    try {
+      await apiRequest(item.id ? `/bookmarks/${item.id}` : '/bookmarks', {
+        token,
+        method: item.id ? 'PATCH' : 'POST',
+        body: payload,
+      })
+      await refreshLibrary()
+      setModal(null)
+      notify(item.id ? 'Bookmark updated' : 'Bookmark saved to your library')
+    } catch (error) {
+      notify(error.message)
+    }
+  }
+
+  const removeBookmark = async (id) => {
+    try {
+      await apiRequest(`/bookmarks/${id}`, { token, method: 'DELETE' })
+      await refreshLibrary()
+      setModal(null)
+      notify('Bookmark deleted')
+    } catch (error) {
+      notify(error.message)
+    }
+  }
+
+  const toggleFavorite = async (id) => {
+    const bookmark = bookmarks.find((item) => item.id === id)
+    if (!bookmark) return
+    try {
+      await apiRequest(`/bookmarks/${id}`, {
+        token,
+        method: 'PATCH',
+        body: { is_favorite: !bookmark.favorite },
+      })
+      await refreshLibrary()
+    } catch (error) {
+      notify(error.message)
+    }
+  }
+
+  const addCollection = async (collection) => {
+    try {
+      await apiRequest('/collections', { token, method: 'POST', body: collection })
+      await refreshLibrary()
+      setModal(null)
+      notify('Collection created')
+    } catch (error) {
+      notify(error.message)
+    }
+  }
+
+  const addCategory = async (category) => {
+    try {
+      await apiRequest('/categories', { token, method: 'POST', body: category })
+      await refreshLibrary()
+      setModal(null)
+      notify('Category created')
+    } catch (error) {
+      notify(error.message)
+    }
+  }
+
+  const saveProfile = async (name) => {
+    try {
+      const profile = await apiRequest('/users/me', {
+        token,
+        method: 'PATCH',
+        body: { display_name: name },
+      })
+      setUser(userFromApi(profile))
+      notify('Profile updated')
+    } catch (error) {
+      notify(error.message)
+    }
+  }
+
+  if (authLoading)
+    return <div className="app-loading">Loading your Collectly library…</div>
 
   if (!user)
     return (
@@ -340,10 +510,7 @@ function App() {
         theme={theme}
         toggleTheme={toggleTheme}
         transitionTarget={transitionTarget}
-        onLogin={(name) => {
-          setUser({ name })
-          go('dashboard')
-        }}
+        onLogin={authenticate}
       />
     )
 
@@ -383,7 +550,7 @@ function App() {
         collections={collections}
         bookmarks={bookmarks}
         user={user}
-        onLogout={() => setUser(null)}
+        onLogout={logout}
         openCreate={() => setModal({ type: 'bookmark' })}
         onAddCategory={() => setModal({ type: 'category' })}
         onAddCollection={() => setModal({ type: 'collection' })}
@@ -484,10 +651,8 @@ function App() {
           {active === 'settings' && (
             <SettingsPage
               user={user}
-              onSave={(name) => {
-                setUser({ ...user, name })
-                notify('Profile updated')
-              }}
+              onSave={saveProfile}
+              onLogout={logout}
             />
           )}
         </div>
@@ -1478,7 +1643,7 @@ function CategoriesPage({ categories, bookmarks, onCreate, openCategory }) {
   )
 }
 
-function SettingsPage({ user, onSave }) {
+function SettingsPage({ user, onSave, onLogout }) {
   const [name, setName] = useState(user.name || '')
   return (
     <>
@@ -1521,7 +1686,7 @@ function SettingsPage({ user, onSave }) {
           </label>
           <label className="field-label">
             Email address
-            <input className="text-input disabled-input" value="wafa@example.com" readOnly />
+            <input className="text-input disabled-input" value={user.email} readOnly />
             <small>Your email address can’t be changed here.</small>
           </label>
           <div className="settings-divider" />
@@ -1531,18 +1696,12 @@ function SettingsPage({ user, onSave }) {
               <p>Manage your session and personal library.</p>
             </div>
           </div>
-          <button
-            className="button button-outline settings-logout"
-            onClick={() => {
-              localStorage.removeItem('collectly-user')
-              window.location.reload()
-            }}
-          >
+          <button className="button button-outline settings-logout" onClick={onLogout}>
             <LogOut size={15} />
             Log out
           </button>
           <div className="settings-save-row">
-            <span>Your changes are saved to this browser.</span>
+            <span>Your changes are saved to your account.</span>
             <button
               className="button button-primary"
               onClick={() => onSave(name.trim() || 'Alex Morgan')}
@@ -1559,18 +1718,32 @@ function SettingsPage({ user, onSave }) {
 
 function AuthScreen({ theme, toggleTheme, transitionTarget, onLogin }) {
   const [mode, setMode] = useState('login')
-  const [name, setName] = useState('Wafa')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirmation, setPasswordConfirmation] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
-  const submit = (event) => {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const submit = async (event) => {
     event.preventDefault()
-    if (!email.includes('@') || password.length < 6) {
-      setError('Enter a valid email and a password with at least 6 characters.')
+    if (mode === 'register' && password.length < 8) {
+      setError('Use a password with at least 8 characters.')
       return
     }
-    onLogin(mode === 'register' ? name.trim() || 'Alex Morgan' : 'Wafa')
+    if (mode === 'register' && password !== passwordConfirmation) {
+      setError('The passwords do not match.')
+      return
+    }
+    setError('')
+    setIsSubmitting(true)
+    try {
+      await onLogin({ mode, name: name.trim(), email: email.trim(), password, passwordConfirmation })
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
   return (
     <div className={`auth-screen ${theme === 'dark' ? 'theme-dark' : ''}`}>
@@ -1674,7 +1847,8 @@ function AuthScreen({ theme, toggleTheme, transitionTarget, onLogin }) {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="At least 6 characters"
+                  placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'}
+                  minLength={mode === 'register' ? 8 : undefined}
                   required
                 />
                 <button type="button" onClick={() => setShowPassword(!showPassword)}>
@@ -1682,22 +1856,39 @@ function AuthScreen({ theme, toggleTheme, transitionTarget, onLogin }) {
                 </button>
               </span>
             </label>
+            {mode === 'register' && (
+              <label className="field-label">
+                Confirm password
+                <input
+                  className="text-input"
+                  type={showPassword ? 'text' : 'password'}
+                  value={passwordConfirmation}
+                  onChange={(event) => setPasswordConfirmation(event.target.value)}
+                  minLength={8}
+                  required
+                />
+              </label>
+            )}
             {mode === 'login' && (
               <button
                 type="button"
                 className="forgot-link"
-                onClick={() =>
-                  setError(
-                    'Password reset will be available when the account service is connected.',
-                  )
-                }
+                onClick={() => setError('Password reset is not available yet.')}
               >
                 Forgot password?
               </button>
             )}
             {error && <p className="form-error">{error}</p>}
-            <button className="button button-primary auth-submit" type="submit">
-              {mode === 'login' ? 'Sign in to your library' : 'Create your account'}
+            <button
+              className="button button-primary auth-submit"
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? 'Please wait…'
+                : mode === 'login'
+                  ? 'Sign in to your library'
+                  : 'Create your account'}
               <ArrowRight size={16} />
             </button>
             <div className="auth-or">
@@ -1709,9 +1900,7 @@ function AuthScreen({ theme, toggleTheme, transitionTarget, onLogin }) {
               className="button button-google"
               type="button"
               onClick={() => {
-                setEmail('hello@collectly.app')
-                setPassword('collectly-demo')
-                setError('Demo details filled in — sign in to explore the library.')
+                setError('Google sign-in is not connected yet.')
               }}
             >
               <svg className="google-logo" viewBox="0 0 48 48" aria-hidden="true">
