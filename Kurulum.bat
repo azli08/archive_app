@@ -1,4 +1,8 @@
 @echo off
+if /i not "%~1"=="--run" (
+    start "Collectly Kurulum" cmd.exe /k ""%~f0" --run"
+    exit /b
+)
 setlocal EnableExtensions
 chcp 65001 >nul
 title Collectly - Ilk Kurulum
