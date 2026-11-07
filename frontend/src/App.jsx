@@ -502,6 +502,18 @@ function App() {
     }
   }
 
+  const removeCategory = async (category) => {
+    try {
+      await apiRequest(`/categories/${category.id}`, { token, method: 'DELETE' })
+      await refreshLibrary()
+      setModal(null)
+      go('categories')
+      notify('Category deleted')
+    } catch (error) {
+      notify(error.message)
+    }
+  }
+
   const saveProfile = async (name) => {
     try {
       const profile = await apiRequest('/users/me', {
@@ -632,6 +644,14 @@ function App() {
                     }
                   : null
               }
+              removeCategory={
+                active === 'category'
+                  ? () => {
+                      const category = categories.find((item) => item.name === activeCollection)
+                      if (category) setModal({ type: 'confirm-delete-category', category })
+                    }
+                  : null
+              }
               toggleFavorite={toggleFavorite}
             />
           )}
@@ -689,6 +709,13 @@ function App() {
           collection={modal.collection}
           onClose={() => setModal(null)}
           onConfirm={() => removeCollection(modal.collection)}
+        />
+      )}
+      {modal?.type === 'confirm-delete-category' && (
+        <ConfirmCategoryModal
+          category={modal.category}
+          onClose={() => setModal(null)}
+          onConfirm={() => removeCategory(modal.category)}
         />
       )}
       {toast && (
@@ -809,7 +836,10 @@ function Sidebar({
   bookmarkCount,
 }) {
   const storageCapacity = 5000
-  const storagePercent = Math.min(100, Math.round((bookmarkCount / storageCapacity) * 100))
+  const storagePercent =
+    bookmarkCount > 0
+      ? Math.min(100, Math.max(1, Math.ceil((bookmarkCount / storageCapacity) * 100)))
+      : 0
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
   const workspaceRef = useRef(null)
   const workspaceName = user?.name?.trim() || user?.email?.split('@')[0] || 'Personal'
@@ -1364,6 +1394,7 @@ function BookmarkPage({
   openEdit,
   removeBookmark,
   removeCollection,
+  removeCategory,
   toggleFavorite,
 }) {
   const [view, setView] = useState('grid')
@@ -1397,7 +1428,7 @@ function BookmarkPage({
         title={title}
         subtitle={subtitle}
         secondaryAction={
-          removeCollection && (
+          removeCollection ? (
             <button
               className="button button-outline collection-delete-action"
               type="button"
@@ -1406,7 +1437,16 @@ function BookmarkPage({
               <Trash2 size={15} />
               Delete collection
             </button>
-          )
+          ) : removeCategory ? (
+            <button
+              className="button button-outline collection-delete-action"
+              type="button"
+              onClick={removeCategory}
+            >
+              <Trash2 size={15} />
+              Delete category
+            </button>
+          ) : null
         }
         action={openCreate}
         actionLabel="Add bookmark"
@@ -2584,6 +2624,32 @@ function ConfirmCollectionModal({ collection, onClose, onConfirm }) {
           <button className="button button-danger" onClick={onConfirm}>
             <Trash2 size={15} />
             Delete collection
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function ConfirmCategoryModal({ category, onClose, onConfirm }) {
+  return (
+    <div className="modal-backdrop">
+      <section className="modal confirm-modal">
+        <span className="confirm-icon">
+          <Trash2 size={19} />
+        </span>
+        <h2>Delete this category?</h2>
+        <p>
+          <strong>{category.name}</strong> will be deleted. Its bookmarks will remain in your
+          library and become uncategorized. This can’t be undone.
+        </p>
+        <div className="modal-footer">
+          <button className="button button-outline" onClick={onClose}>
+            Keep category
+          </button>
+          <button className="button button-danger" onClick={onConfirm}>
+            <Trash2 size={15} />
+            Delete category
           </button>
         </div>
       </section>

@@ -271,6 +271,16 @@ def create_category(db: Session, user: User, payload: CategoryCreate) -> Categor
     return category
 
 
+def delete_category(db: Session, user: User, category_id: UUID) -> None:
+    category = db.scalar(
+        select(Category).where(Category.id == category_id, Category.user_id == user.id)
+    )
+    if category is None:
+        raise LibraryItemNotFound
+    db.delete(category)
+    db.commit()
+
+
 def list_collections(db: Session, user: User) -> list[Collection]:
     return list(
         db.scalars(

@@ -58,12 +58,26 @@ a {
   position: fixed;
   inset: 0 auto 0 0;
   width: 258px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #d8d9e0 transparent;
   background: #fff;
   border-right: 1px solid #eceef2;
   display: flex;
   flex-direction: column;
   padding: 24px 15px 15px;
   z-index: 20;
+}
+.sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: #d8d9e0;
+}
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
 }
 .sidebar-top {
   padding: 0 9px;
