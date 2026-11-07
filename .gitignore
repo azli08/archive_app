@@ -39,3 +39,5 @@ Thumbs.db
 *.sqlite3
 *.db
 *.log
+backend/postgres-data/
+backend/pgdata/

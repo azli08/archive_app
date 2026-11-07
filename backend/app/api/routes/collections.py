@@ -1,6 +1,8 @@
 """Collection endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_user
@@ -9,8 +11,10 @@ from app.models import User
 from app.schemas.organization import CollectionCreate, CollectionRead
 from app.services.library_service import (
     DuplicateLibraryItem,
+    LibraryItemNotFound,
     collection_read,
     create_collection,
+    delete_collection,
     list_collections,
 )
 
@@ -34,3 +38,16 @@ def add_collection(
         return collection_read(create_collection(db, current_user, payload))
     except DuplicateLibraryItem as exc:
         raise HTTPException(status_code=409, detail="This collection already exists") from exc
+
+
+@router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_collection(
+    collection_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Response:
+    try:
+        delete_collection(db, current_user, collection_id)
+    except LibraryItemNotFound as exc:
+        raise HTTPException(status_code=404, detail="Collection not found") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
