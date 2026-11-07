@@ -231,6 +231,7 @@ function bookmarkFromApi(bookmark) {
 function libraryFromApi(bookmarkPage, categories, collections) {
   return {
     bookmarks: bookmarkPage.items.map(bookmarkFromApi),
+    bookmarkTotal: bookmarkPage.total,
     categories,
     collections: collections.map((collection) => ({
       ...collection,
@@ -249,6 +250,7 @@ function App() {
   const [transitionTarget, setTransitionTarget] = useState(null)
   const transitionLock = useRef(false)
   const [bookmarks, setBookmarks] = useState([])
+  const [bookmarkTotal, setBookmarkTotal] = useState(0)
   const [collections, setCollections] = useState([])
   const [categories, setCategories] = useState([])
   const [active, setActive] = useState(() => routeState(window.location.pathname).active)
@@ -258,7 +260,6 @@ function App() {
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
   const [toast, setToast] = useState('')
-  const [mobileNav, setMobileNav] = useState(false)
 
   const loadLibrary = async (sessionToken) => {
     const [bookmarkPage, categoryRows, collectionRows] = await Promise.all([
@@ -271,6 +272,7 @@ function App() {
 
   const applyLibrary = (library) => {
     setBookmarks(library.bookmarks)
+    setBookmarkTotal(library.bookmarkTotal)
     setCategories(library.categories)
     setCollections(library.collections)
   }
@@ -297,6 +299,7 @@ function App() {
           setToken(null)
           setUser(null)
           setBookmarks([])
+          setBookmarkTotal(0)
           setCategories([])
           setCollections([])
         }
@@ -360,7 +363,6 @@ function App() {
   }, [location.pathname])
   const go = (name, value = null) => {
     setSearch('')
-    setMobileNav(false)
     const path =
       name === 'dashboard'
         ? '/'
@@ -407,6 +409,7 @@ function App() {
     setToken(null)
     setUser(null)
     setBookmarks([])
+    setBookmarkTotal(0)
     setCategories([])
     setCollections([])
     go('dashboard')
@@ -476,6 +479,18 @@ function App() {
     }
   }
 
+  const removeCollection = async (collection) => {
+    try {
+      await apiRequest(`/collections/${collection.id}`, { token, method: 'DELETE' })
+      await refreshLibrary()
+      setModal(null)
+      go('collections')
+      notify('Collection deleted')
+    } catch (error) {
+      notify(error.message)
+    }
+  }
+
   const addCategory = async (category) => {
     try {
       await apiRequest('/categories', { token, method: 'POST', body: category })
@@ -536,13 +551,6 @@ function App() {
 
   return (
     <div className={`app-shell ${theme === 'dark' ? 'theme-dark' : ''}`}>
-      {mobileNav && (
-        <button
-          className="mobile-scrim"
-          onClick={() => setMobileNav(false)}
-          aria-label="Close navigation"
-        />
-      )}
       <Sidebar
         active={active}
         go={go}
@@ -554,23 +562,10 @@ function App() {
         openCreate={() => setModal({ type: 'bookmark' })}
         onAddCategory={() => setModal({ type: 'category' })}
         onAddCollection={() => setModal({ type: 'collection' })}
-        mobileNav={mobileNav}
-        bookmarkCount={bookmarks.length}
+        bookmarkCount={bookmarkTotal}
       />
       <main className="main-area">
         <header className="topbar">
-          <button
-            className="icon-button mobile-menu"
-            onClick={() => setMobileNav(true)}
-            aria-label="Open navigation"
-          >
-            <Layers3 size={19} />
-          </button>
-          <div className="breadcrumb">
-            <span>Library</span>
-            <ChevronRight size={14} />
-            <strong>{pageTitle}</strong>
-          </div>
           <div className="topbar-actions">
             <label className="search-box">
               <Search size={16} />
@@ -629,6 +624,14 @@ function App() {
               openCreate={() => setModal({ type: 'bookmark' })}
               openEdit={(bookmark) => setModal({ type: 'bookmark', bookmark })}
               removeBookmark={(bookmark) => setModal({ type: 'confirm-delete', bookmark })}
+              removeCollection={
+                active === 'collection'
+                  ? () => {
+                      const collection = collections.find((item) => item.id === activeCollection)
+                      if (collection) setModal({ type: 'confirm-delete-collection', collection })
+                    }
+                  : null
+              }
               toggleFavorite={toggleFavorite}
             />
           )}
@@ -653,6 +656,8 @@ function App() {
               user={user}
               onSave={saveProfile}
               onLogout={logout}
+              theme={theme}
+              onToggleTheme={toggleTheme}
             />
           )}
         </div>
@@ -677,6 +682,13 @@ function App() {
           bookmark={modal.bookmark}
           onClose={() => setModal(null)}
           onConfirm={() => removeBookmark(modal.bookmark.id)}
+        />
+      )}
+      {modal?.type === 'confirm-delete-collection' && (
+        <ConfirmCollectionModal
+          collection={modal.collection}
+          onClose={() => setModal(null)}
+          onConfirm={() => removeCollection(modal.collection)}
         />
       )}
       {toast && (
@@ -794,21 +806,86 @@ function Sidebar({
   openCreate,
   onAddCategory,
   onAddCollection,
-  mobileNav,
   bookmarkCount,
 }) {
+  const storageCapacity = 5000
+  const storagePercent = Math.min(100, Math.round((bookmarkCount / storageCapacity) * 100))
+  const [workspaceOpen, setWorkspaceOpen] = useState(false)
+  const workspaceRef = useRef(null)
+  const workspaceName = user?.name?.trim() || user?.email?.split('@')[0] || 'Personal'
+  const workspaceTitle = `${workspaceName}’s space`
+
+  useEffect(() => {
+    if (!workspaceOpen) return undefined
+    const closeOnOutsideClick = (event) => {
+      if (!workspaceRef.current?.contains(event.target)) setWorkspaceOpen(false)
+    }
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setWorkspaceOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideClick)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [workspaceOpen])
+
   return (
-    <aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}>
+    <aside className="sidebar">
       <div className="sidebar-top">
         <Brand />
-        <button className="workspace-switch">
-          <span className="workspace-dot">W</span>
-          <span>
-            <strong>Wafa’s space</strong>
-            <small>Personal workspace</small>
-          </span>
-          <ChevronDown size={15} />
-        </button>
+        <div className="workspace-picker" ref={workspaceRef}>
+          <button
+            className="workspace-switch"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={workspaceOpen}
+            onClick={() => setWorkspaceOpen((open) => !open)}
+          >
+            <span className="workspace-dot">{workspaceName.slice(0, 1).toUpperCase()}</span>
+            <span>
+              <strong>{workspaceTitle}</strong>
+              <small>Personal workspace</small>
+            </span>
+            <ChevronDown className={workspaceOpen ? 'workspace-chevron open' : 'workspace-chevron'} size={15} />
+          </button>
+          {workspaceOpen && (
+            <div className="workspace-menu" role="menu" aria-label="Personal workspace">
+              <p className="workspace-menu-label">CURRENT WORKSPACE</p>
+              <button
+                className="workspace-menu-current"
+                type="button"
+                role="menuitemradio"
+                aria-checked="true"
+                onClick={() => {
+                  setWorkspaceOpen(false)
+                  go('dashboard')
+                }}
+              >
+                <span className="workspace-menu-dot">{workspaceName.slice(0, 1).toUpperCase()}</span>
+                <span className="workspace-menu-copy">
+                  <strong>{workspaceTitle}</strong>
+                  <small>Personal workspace</small>
+                </span>
+                <Check size={15} />
+              </button>
+              <div className="workspace-menu-divider" />
+              <button
+                className="workspace-menu-settings"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setWorkspaceOpen(false)
+                  go('settings')
+                }}
+              >
+                <Settings size={15} />
+                Manage profile
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <button className="quick-add-side" onClick={openCreate}>
         <span>
@@ -904,12 +981,14 @@ function Sidebar({
         <div className="storage-card">
           <div className="storage-head">
             <span>Library storage</span>
-            <span>24%</span>
+            <span>{storagePercent}%</span>
           </div>
           <div className="storage-track">
-            <span />
+            <span style={{ width: `${storagePercent}%` }} />
           </div>
-          <small>1,204 of 5,000 saved items</small>
+          <small>
+            {bookmarkCount.toLocaleString()} of {storageCapacity.toLocaleString()} saved items
+          </small>
         </div>
         <NavItem
           icon={<CircleHelp />}
@@ -954,6 +1033,7 @@ function PageHeading({
   action,
   actionLabel,
   actionIcon = <Plus size={16} />,
+  secondaryAction,
 }) {
   return (
     <div className="page-heading">
@@ -962,12 +1042,15 @@ function PageHeading({
         <h1>{title}</h1>
         <p>{subtitle}</p>
       </div>
-      {action && (
-        <button className="button button-primary" onClick={action}>
-          {actionIcon}
-          {actionLabel}
-        </button>
-      )}
+      <div className="page-heading-actions">
+        {secondaryAction}
+        {action && (
+          <button className="button button-primary" onClick={action}>
+            {actionIcon}
+            {actionLabel}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -1280,6 +1363,7 @@ function BookmarkPage({
   openCreate,
   openEdit,
   removeBookmark,
+  removeCollection,
   toggleFavorite,
 }) {
   const [view, setView] = useState('grid')
@@ -1312,6 +1396,18 @@ function BookmarkPage({
         }
         title={title}
         subtitle={subtitle}
+        secondaryAction={
+          removeCollection && (
+            <button
+              className="button button-outline collection-delete-action"
+              type="button"
+              onClick={removeCollection}
+            >
+              <Trash2 size={15} />
+              Delete collection
+            </button>
+          )
+        }
         action={openCreate}
         actionLabel="Add bookmark"
       />
@@ -1643,8 +1739,15 @@ function CategoriesPage({ categories, bookmarks, onCreate, openCategory }) {
   )
 }
 
-function SettingsPage({ user, onSave, onLogout }) {
+function SettingsPage({ user, onSave, onLogout, theme, onToggleTheme }) {
   const [name, setName] = useState(user.name || '')
+  const [activeTab, setActiveTab] = useState('profile')
+  const workspaceName = user.name?.trim() || user.email?.split('@')[0] || 'Personal'
+
+  const chooseTheme = (nextTheme) => {
+    if (theme !== nextTheme) onToggleTheme()
+  }
+
   return (
     <>
       <PageHeading
@@ -1654,62 +1757,149 @@ function SettingsPage({ user, onSave, onLogout }) {
       />
       <div className="settings-layout">
         <aside className="settings-menu">
-          <button className="settings-tab selected">
+          <button
+            className={`settings-tab ${activeTab === 'profile' ? 'selected' : ''}`}
+            type="button"
+            onClick={() => setActiveTab('profile')}
+          >
             <UserRound size={16} />
             Profile
           </button>
-          <button className="settings-tab">
+          <button
+            className={`settings-tab ${activeTab === 'preferences' ? 'selected' : ''}`}
+            type="button"
+            onClick={() => setActiveTab('preferences')}
+          >
             <Settings size={16} />
             Preferences
           </button>
-          <button className="settings-tab">
+          <button
+            className={`settings-tab ${activeTab === 'workspace' ? 'selected' : ''}`}
+            type="button"
+            onClick={() => setActiveTab('workspace')}
+          >
             <Layers3 size={16} />
             Workspace
           </button>
         </aside>
         <section className="settings-card">
-          <div className="settings-section-heading">
-            <span className="settings-avatar">{name.slice(0, 1).toUpperCase() || 'A'}</span>
-            <div>
-              <h2>Personal information</h2>
-              <p>Update your name and the details on your account.</p>
-            </div>
-          </div>
-          <label className="field-label">
-            Display name
-            <input
-              className="text-input"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Your name"
-            />
-          </label>
-          <label className="field-label">
-            Email address
-            <input className="text-input disabled-input" value={user.email} readOnly />
-            <small>Your email address can’t be changed here.</small>
-          </label>
-          <div className="settings-divider" />
-          <div className="settings-section-heading compact">
-            <div>
-              <h2>Account</h2>
-              <p>Manage your session and personal library.</p>
-            </div>
-          </div>
-          <button className="button button-outline settings-logout" onClick={onLogout}>
-            <LogOut size={15} />
-            Log out
-          </button>
-          <div className="settings-save-row">
-            <span>Your changes are saved to your account.</span>
-            <button
-              className="button button-primary"
-              onClick={() => onSave(name.trim() || 'Alex Morgan')}
-            >
-              <Check size={15} />
-              Save changes
-            </button>
-          </div>
+          {activeTab === 'profile' && (
+            <>
+              <div className="settings-section-heading">
+                <span className="settings-avatar">{name.slice(0, 1).toUpperCase() || 'A'}</span>
+                <div>
+                  <h2>Personal information</h2>
+                  <p>Update your name and the details on your account.</p>
+                </div>
+              </div>
+              <label className="field-label">
+                Display name
+                <input
+                  className="text-input"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Your name"
+                />
+              </label>
+              <label className="field-label">
+                Email address
+                <input className="text-input disabled-input" value={user.email} readOnly />
+                <small>Your email address can’t be changed here.</small>
+              </label>
+              <div className="settings-divider" />
+              <div className="settings-section-heading compact">
+                <div>
+                  <h2>Account</h2>
+                  <p>Manage your session and personal library.</p>
+                </div>
+              </div>
+              <button className="button button-outline settings-logout" onClick={onLogout}>
+                <LogOut size={15} />
+                Log out
+              </button>
+              <div className="settings-save-row">
+                <span>Your changes are saved to your account.</span>
+                <button
+                  className="button button-primary"
+                  onClick={() => onSave(name.trim() || 'Alex Morgan')}
+                >
+                  <Check size={15} />
+                  Save changes
+                </button>
+              </div>
+            </>
+          )}
+          {activeTab === 'preferences' && (
+            <>
+              <div className="settings-section-heading">
+                <span className="settings-avatar"><Settings size={19} /></span>
+                <div>
+                  <h2>Preferences</h2>
+                  <p>Choose how Collectly looks on this device.</p>
+                </div>
+              </div>
+              <div className="settings-preference-row">
+                <div>
+                  <strong>Appearance</strong>
+                  <small>Select a light or dark theme.</small>
+                </div>
+                <div className="settings-theme-options">
+                  <button
+                    className={`settings-theme-option ${theme === 'light' ? 'selected' : ''}`}
+                    type="button"
+                    aria-pressed={theme === 'light'}
+                    onClick={() => chooseTheme('light')}
+                  >
+                    <Sun size={15} /> Light
+                  </button>
+                  <button
+                    className={`settings-theme-option ${theme === 'dark' ? 'selected' : ''}`}
+                    type="button"
+                    aria-pressed={theme === 'dark'}
+                    onClick={() => chooseTheme('dark')}
+                  >
+                    <Moon size={15} /> Dark
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {activeTab === 'workspace' && (
+            <>
+              <div className="settings-section-heading">
+                <span className="settings-avatar"><Layers3 size={19} /></span>
+                <div>
+                  <h2>{workspaceName}’s space</h2>
+                  <p>Your personal workspace</p>
+                </div>
+              </div>
+              <div className="workspace-details">
+                <div>
+                  <small>Workspace type</small>
+                  <strong>Personal</strong>
+                </div>
+                <div>
+                  <small>Workspace owner</small>
+                  <strong>{workspaceName}</strong>
+                </div>
+                <div>
+                  <small>Account email</small>
+                  <strong>{user.email}</strong>
+                </div>
+              </div>
+              <p className="workspace-description">
+                Your bookmarks, categories, and collections are private to this account.
+              </p>
+              <button
+                className="button button-outline workspace-profile-link"
+                type="button"
+                onClick={() => setActiveTab('profile')}
+              >
+                <UserRound size={15} />
+                Manage profile
+              </button>
+            </>
+          )}
         </section>
       </div>
     </>
@@ -2144,24 +2334,30 @@ function BookmarkModal({ bookmark, categories, collections, onClose, onSave }) {
                 <Layers3 size={15} />
                 Add to collection
               </span>
-              <div>
-                {collections.map((collection) => (
-                  <label key={collection.id}>
-                    <input
-                      type="checkbox"
-                      checked={selectedCollections.includes(collection.id)}
-                      onChange={(event) =>
-                        setSelectedCollections((current) =>
-                          event.target.checked
-                            ? [...current, collection.id]
-                            : current.filter((id) => id !== collection.id),
-                        )
-                      }
-                    />
-                    {collection.name}
-                  </label>
-                ))}
-              </div>
+              {collections.length > 0 ? (
+                <div>
+                  {collections.map((collection) => (
+                    <label key={collection.id}>
+                      <input
+                        type="checkbox"
+                        checked={selectedCollections.includes(collection.id)}
+                        onChange={(event) =>
+                          setSelectedCollections((current) =>
+                            event.target.checked
+                              ? [...current, collection.id]
+                              : current.filter((id) => id !== collection.id),
+                          )
+                        }
+                      />
+                      {collection.name}
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <p className="collection-empty-state">
+                  No collections yet. Create one from the Collections page to organize this bookmark.
+                </p>
+              )}
             </div>
           </div>
           {error && <p className="form-error">{error}</p>}
@@ -2183,7 +2379,7 @@ function BookmarkModal({ bookmark, categories, collections, onClose, onSave }) {
 function CollectionModal({ onClose, onSave }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [emoji, setEmoji] = useState('✦')
+  const [emoji, setEmoji] = useState('')
   const [error, setError] = useState('')
   return (
     <div
@@ -2215,7 +2411,7 @@ function CollectionModal({ onClose, onSave }) {
             onSave({
               name: name.trim(),
               description: description.trim(),
-              emoji,
+              emoji: emoji.trim() || '✦',
               color: ['collection-lilac', 'collection-green', 'collection-peach'][
                 Math.floor(Math.random() * 3)
               ],
@@ -2248,6 +2444,7 @@ function CollectionModal({ onClose, onSave }) {
               className="text-input emoji-input"
               value={emoji}
               onChange={(event) => setEmoji(event.target.value)}
+              placeholder="✦"
               maxLength={4}
             />
           </label>
@@ -2361,6 +2558,32 @@ function ConfirmModal({ bookmark, onClose, onConfirm }) {
           <button className="button button-danger" onClick={onConfirm}>
             <Trash2 size={15} />
             Delete bookmark
+          </button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function ConfirmCollectionModal({ collection, onClose, onConfirm }) {
+  return (
+    <div className="modal-backdrop">
+      <section className="modal confirm-modal">
+        <span className="confirm-icon">
+          <Trash2 size={19} />
+        </span>
+        <h2>Delete this collection?</h2>
+        <p>
+          <strong>{collection.name}</strong> will be deleted. Its bookmarks will remain in your
+          library, but they will be removed from this collection. This can’t be undone.
+        </p>
+        <div className="modal-footer">
+          <button className="button button-outline" onClick={onClose}>
+            Keep collection
+          </button>
+          <button className="button button-danger" onClick={onConfirm}>
+            <Trash2 size={15} />
+            Delete collection
           </button>
         </div>
       </section>

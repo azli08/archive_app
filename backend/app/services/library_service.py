@@ -279,6 +279,16 @@ def list_collections(db: Session, user: User) -> list[Collection]:
     )
 
 
+def delete_collection(db: Session, user: User, collection_id: UUID) -> None:
+    collection = db.scalar(
+        select(Collection).where(Collection.id == collection_id, Collection.user_id == user.id)
+    )
+    if collection is None:
+        raise LibraryItemNotFound
+    db.delete(collection)
+    db.commit()
+
+
 def create_collection(db: Session, user: User, payload: CollectionCreate) -> Collection:
     collection = Collection(
         user_id=user.id,

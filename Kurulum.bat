@@ -140,8 +140,13 @@ if not exist "%VENV_PY%" (
     goto :FAIL
 )
 echo Backend Python bagimliliklari kuruluyor...
+set "PYYAML_FORCE_LIBYAML="
+"%VENV_PY%" -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 15) else 1)" >nul 2>&1
+if not errorlevel 1 set "PYYAML_FORCE_LIBYAML=0"
 "%VENV_PY%" -m pip install -r "%BACKEND%\requirements.txt"
-if errorlevel 1 (
+set "PIP_RESULT=%ERRORLEVEL%"
+set "PYYAML_FORCE_LIBYAML="
+if not "%PIP_RESULT%"=="0" (
     echo HATA: Python bagimliliklari kurulamadi. Internet baglantisini ve pip ciktisini kontrol edin.
     goto :FAIL
 )
