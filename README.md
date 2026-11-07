@@ -18,6 +18,7 @@ Gerekli araçlar: Docker Desktop, Python 3, Node.js 20.19+ veya 22.12+ ve npm. K
 
 - `backend/` - FastAPI uygulaması, Python bağımlılıkları, Alembic migration'ları ve Docker Compose veritabanı servisi.
 - `frontend/` - React ve Vite arayüzü.
+- `frontend/android/` - Capacitor ile oluşturulan Android uygulaması; kurulum adımları `frontend/ANDROID.md` dosyasında.
 - `docs/` - Proje dokümantasyonu.
 - `Kurulum.bat` - Yeni Windows bilgisayardaki ilk kurulum.
 - `Baslat.bat` - Gunluk yerel gelistirme baslatma betigi.

@@ -12,9 +12,10 @@ from app.api.routes.users import router as users_router
 from app.config import settings
 
 app = FastAPI(title=settings.app_name)
+allowed_origins = list(dict.fromkeys([*settings.cors_origins, "https://localhost"]))
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],

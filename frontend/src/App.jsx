@@ -727,6 +727,7 @@ function App() {
         </div>
       )}
       {transitionTarget && <ThemeTransition targetTheme={transitionTarget} />}
+      <MobileBottomNav active={active} go={go} />
     </div>
   )
 }
@@ -1053,6 +1054,46 @@ function NavItem({ icon, label, count, active, onClick }) {
       <span className="nav-item-label">{label}</span>
       {count && <span className="nav-count">{count}</span>}
     </button>
+  )
+}
+
+function MobileBottomNav({ active, go }) {
+  const items = [
+    { key: 'dashboard', label: 'Home', icon: <LayoutDashboard size={19} /> },
+    {
+      key: 'bookmarks',
+      label: 'Library',
+      icon: <Bookmark size={19} />,
+      selected: ['bookmarks', 'favorites', 'category'].includes(active),
+    },
+    {
+      key: 'collections',
+      label: 'Collections',
+      icon: <Folder size={19} />,
+      selected: ['collections', 'collection'].includes(active),
+    },
+    { key: 'categories', label: 'Categories', icon: <Tag size={19} /> },
+    { key: 'settings', label: 'Settings', icon: <Settings size={19} /> },
+  ]
+
+  return (
+    <nav className="mobile-bottom-nav" aria-label="Main navigation">
+      {items.map((item) => {
+        const selected = item.selected ?? active === item.key
+        return (
+          <button
+            key={item.key}
+            type="button"
+            className={`mobile-bottom-nav-item ${selected ? 'selected' : ''}`}
+            aria-current={selected ? 'page' : undefined}
+            onClick={() => go(item.key)}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        )
+      })}
+    </nav>
   )
 }
 

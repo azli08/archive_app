@@ -27,6 +27,7 @@ htmlcov/
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/.gradle-user-home/
 
 # Editors and operating systems
 .vscode/
