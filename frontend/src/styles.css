@@ -79,6 +79,9 @@ a {
 .sidebar::-webkit-scrollbar-track {
   background: transparent;
 }
+.mobile-bottom-nav {
+  display: none;
+}
 .sidebar-top {
   padding: 0 9px;
 }
@@ -3021,7 +3024,44 @@ a {
     width: min(220px, 27vw);
   }
   .page-content {
-    padding: 27px 22px 42px;
+    padding: 27px 22px calc(96px + env(safe-area-inset-bottom));
+  }
+  .mobile-bottom-nav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 7px 5px calc(7px + env(safe-area-inset-bottom));
+    border-top: 1px solid #ececf1;
+    background: #fffffff2;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .mobile-bottom-nav-item {
+    min-width: 0;
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    gap: 4px;
+    padding: 5px 1px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #9294a1;
+    font-size: 9px;
+    line-height: 1.15;
+  }
+  .mobile-bottom-nav-item.selected {
+    color: #6f6aaf;
+  }
+  .mobile-bottom-nav-item span {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .welcome-banner {
     height: 210px;
@@ -3180,7 +3220,7 @@ a {
     height: 30px;
   }
   .page-content {
-    padding: 22px 15px 35px;
+    padding: 22px 15px calc(92px + env(safe-area-inset-bottom));
   }
   .page-heading {
     align-items: flex-start;
@@ -3755,6 +3795,7 @@ html[data-theme='dark'] {
 }
 .theme-dark .sidebar,
 .theme-dark .topbar,
+.theme-dark .mobile-bottom-nav,
 .theme-dark .panel,
 .theme-dark .stat-card,
 .theme-dark .bookmark-card,
@@ -3771,6 +3812,15 @@ html[data-theme='dark'] {
 .theme-dark .topbar {
   background: #202128ed;
   border-color: #30313a;
+}
+.theme-dark .mobile-bottom-nav {
+  background: #202128f2;
+}
+.theme-dark .mobile-bottom-nav-item {
+  color: #9b9ca8;
+}
+.theme-dark .mobile-bottom-nav-item.selected {
+  color: #c2bdf1;
 }
 .theme-dark .brand {
   color: #efedf6;

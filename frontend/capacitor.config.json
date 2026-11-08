@@ -1,0 +1,8 @@
+{
+  "appId": "com.collectly.app",
+  "appName": "Collectly",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
