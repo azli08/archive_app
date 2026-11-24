@@ -253,9 +253,9 @@ function App() {
   const [bookmarkTotal, setBookmarkTotal] = useState(0)
   const [collections, setCollections] = useState([])
   const [categories, setCategories] = useState([])
-  const [active, setActive] = useState(() => routeState(window.location.pathname).active)
+  const [active, setActive] = useState(() => routeState(location.pathname).active)
   const [activeCollection, setActiveCollection] = useState(
-    () => routeState(window.location.pathname).value,
+    () => routeState(location.pathname).value,
   )
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState(null)
@@ -836,6 +836,7 @@ function Sidebar({
   onAddCollection,
   bookmarkCount,
 }) {
+  const location = useLocation()
   const storageCapacity = 5000
   const storagePercent =
     bookmarkCount > 0
@@ -963,7 +964,7 @@ function Sidebar({
         {categories.slice(0, 5).map((category) => (
           <button
             key={category.name}
-            className={`nav-item ${active === 'category' && category.name === window.decodeURIComponent(window.location.pathname.split('/').pop()) ? 'selected' : ''}`}
+            className={`nav-item ${active === 'category' && category.name === window.decodeURIComponent(location.pathname.split('/').pop()) ? 'selected' : ''}`}
             onClick={() => go('category', category.name)}
           >
             <span className="category-icon" style={{ color: category.color }}>
@@ -994,7 +995,7 @@ function Sidebar({
         {collections.slice(0, 3).map((collection) => (
           <button
             key={collection.id}
-            className={`nav-item ${active === 'collection' && window.location.pathname.split('/').pop() === collection.id ? 'selected' : ''}`}
+            className={`nav-item ${active === 'collection' && location.pathname.split('/').pop() === collection.id ? 'selected' : ''}`}
             onClick={() => go('collection', collection.id)}
           >
             <span className="collection-icon-small">{collection.emoji}</span>
