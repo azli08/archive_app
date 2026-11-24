@@ -26,7 +26,9 @@ def root() -> dict[str, str]:
     }
 
 
-allowed_origins = list(dict.fromkeys([*settings.cors_origins, "https://localhost"]))
+allowed_origins = list(
+    dict.fromkeys([*settings.cors_origins, "https://localhost", "https://azli08.github.io"])
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
